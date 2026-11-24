@@ -480,3 +480,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# FinTrack — local secrets (real connection string + JWT key live here)
+appsettings.Development.json
