@@ -1,0 +1,82 @@
+@page "/login"
+@layout AuthLayout
+@inject ApiClient Api
+@inject TokenStore Tokens
+@inject JwtAuthStateProvider Auth
+@inject NavigationManager Navigation
+
+<PageTitle>Sign in · FinTrack</PageTitle>
+
+<div class="auth-card">
+    <div class="auth-brand">
+        <div class="glyph">F</div>
+        <div class="word">FinTrack</div>
+    </div>
+
+    <h2>Welcome back</h2>
+    <p class="subtitle">Sign in to your FinTrack account</p>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert-pmp-error" role="alert">@_error</div>
+    }
+
+    <EditForm Model="_model" OnValidSubmit="SubmitAsync">
+        <DataAnnotationsValidator />
+
+        <div class="field">
+            <label for="email">Email</label>
+            <InputText id="email" class="form-control" @bind-Value="_model.Email"
+                       autocomplete="username" placeholder="you@example.com" />
+            <ValidationMessage For="() => _model.Email" />
+        </div>
+
+        <div class="field">
+            <label for="password">Password</label>
+            <InputText id="password" type="password" class="form-control" @bind-Value="_model.Password"
+                       autocomplete="current-password" placeholder="Your password" />
+            <ValidationMessage For="() => _model.Password" />
+        </div>
+
+        <button type="submit" class="btn btn-primary-pmp btn-block" disabled="@_busy">
+            @if (_busy)
+            {
+                <span class="btn-spin"></span>
+                <span>Signing in…</span>
+            }
+            else
+            {
+                <span>Sign in</span>
+            }
+        </button>
+    </EditForm>
+
+    <p class="auth-alt">Don't have an account? <a href="register">Create one</a></p>
+</div>
+
+@code {
+    private readonly LoginRequest _model = new();
+    private bool _busy;
+    private string? _error;
+
+    [Parameter, SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+
+    private async Task SubmitAsync()
+    {
+        _busy = true;
+        _error = null;
+
+        var result = await Api.LoginAsync(_model);
+        if (result.Success && result.Data is not null)
+        {
+            await Tokens.SetTokenAsync(result.Data.Token);
+            Auth.NotifyUserChanged();
+            Navigation.NavigateTo(string.IsNullOrEmpty(ReturnUrl) ? "portfolios" : ReturnUrl);
+        }
+        else
+        {
+            _error = result.Message ?? "Sign in failed.";
+            _busy = false;
+        }
+    }
+}

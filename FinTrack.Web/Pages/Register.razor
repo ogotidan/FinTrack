@@ -1,0 +1,86 @@
+@page "/register"
+@layout AuthLayout
+@inject ApiClient Api
+@inject TokenStore Tokens
+@inject JwtAuthStateProvider Auth
+@inject NavigationManager Navigation
+
+<PageTitle>Create account · FinTrack</PageTitle>
+
+<div class="auth-card">
+    <div class="auth-brand">
+        <div class="glyph">F</div>
+        <div class="word">FinTrack</div>
+    </div>
+
+    <h2>Create your account</h2>
+    <p class="subtitle">Start tracking portfolios on FinTrack</p>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert-pmp-error" role="alert">@_error</div>
+    }
+
+    <EditForm Model="_model" OnValidSubmit="SubmitAsync">
+        <DataAnnotationsValidator />
+
+        <div class="field">
+            <label for="name">Full name</label>
+            <InputText id="name" class="form-control" @bind-Value="_model.Name" placeholder="Jane Analyst" />
+            <ValidationMessage For="() => _model.Name" />
+        </div>
+
+        <div class="field">
+            <label for="email">Email</label>
+            <InputText id="email" class="form-control" @bind-Value="_model.Email"
+                       autocomplete="username" placeholder="you@example.com" />
+            <ValidationMessage For="() => _model.Email" />
+        </div>
+
+        <div class="field">
+            <label for="password">Password</label>
+            <InputText id="password" type="password" class="form-control" @bind-Value="_model.Password"
+                       autocomplete="new-password" placeholder="At least 6 characters" />
+            <ValidationMessage For="() => _model.Password" />
+        </div>
+
+        <button type="submit" class="btn btn-primary-pmp btn-block" disabled="@_busy">
+            @if (_busy)
+            {
+                <span class="btn-spin"></span>
+                <span>Creating account…</span>
+            }
+            else
+            {
+                <span>Create account</span>
+            }
+        </button>
+    </EditForm>
+
+    <p class="auth-alt">Already have an account? <a href="login">Sign in</a></p>
+</div>
+
+@code {
+    private readonly RegisterRequest _model = new();
+    private bool _busy;
+    private string? _error;
+
+    private async Task SubmitAsync()
+    {
+        _busy = true;
+        _error = null;
+
+        var result = await Api.RegisterAsync(_model);
+        if (result.Success && result.Data is not null)
+        {
+            await Tokens.SetTokenAsync(result.Data.Token);
+            Auth.NotifyUserChanged();
+            Navigation.NavigateTo("portfolios");
+        }
+        else
+        {
+            _error = result.Message ?? "Registration failed.";
+            _busy = false;
+        }
+    }
+}
