@@ -1,39 +1,110 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">FinTrack.Web</a>
-        <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-    </div>
-</div>
+@implements IDisposable
+@inject NavigationManager Navigation
+@inject TokenStore Tokens
+@inject JwtAuthStateProvider Auth
+@inject PortfolioStore Store
 
-<div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
-    <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
-            </NavLink>
+<aside class="pmp-sidebar">
+
+    <div class="sidebar-brand">
+        <div class="s-glyph">F</div>
+        <div>
+            <div class="s-word">FinTrack</div>
+            <div class="s-sub">by Finnet Technologies</div>
         </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="counter">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Counter
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="weather">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
-            </NavLink>
+    </div>
+
+    <nav class="sidebar-nav">
+        <div class="nav-item">
+            <button type="button" class="nav-link has-sub @(_open ? "open" : "")" @onclick="Toggle">
+                <i class="fa-solid fa-briefcase"></i>
+                <span>Portfolios</span>
+                <i class="fa-solid fa-chevron-right chevron"></i>
+            </button>
+            <div class="submenu @(_open ? "open" : "")">
+                <NavLink class="nav-link" href="portfolios" Match="NavLinkMatch.All">
+                    <i class="fa-solid fa-list"></i>
+                    <span>All portfolios</span>
+                </NavLink>
+                @foreach (var p in Store.Items)
+                {
+                    <NavLink class="nav-link" href="@($"portfolios/{p.Id}")" Match="NavLinkMatch.All">
+                        <i class="fa-solid fa-circle" style="font-size:7px;"></i>
+                        <span>@p.Name</span>
+                    </NavLink>
+                }
+                @if (Store.Loaded && Store.Items.Count == 0)
+                {
+                    <div class="nav-link" style="opacity:.5;cursor:default;"><span>No portfolios yet</span></div>
+                }
+            </div>
         </div>
     </nav>
-</div>
+
+    <div class="sidebar-user">
+        <AuthorizeView>
+            <Authorized>
+                <div class="u-wrap">
+                    <div class="u-avatar">@Initials(context.User.Identity?.Name)</div>
+                    <div>
+                        <div class="u-name">@context.User.Identity?.Name</div>
+                        <div class="u-role">Analyst</div>
+                    </div>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+        <button type="button" @onclick="LogoutAsync">
+            <i class="fa-solid fa-arrow-right-from-bracket"></i>
+            Sign out
+        </button>
+    </div>
+
+</aside>
 
 @code {
-    private bool collapseNavMenu = true;
+    private bool _open = true;
 
-    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
-
-    private void ToggleNavMenu()
+    protected override async Task OnInitializedAsync()
     {
-        collapseNavMenu = !collapseNavMenu;
+        Store.Changed += OnStoreChanged;
+        Auth.AuthenticationStateChanged += OnAuthChanged;
+        var state = await Auth.GetAuthenticationStateAsync();
+        if (state.User.Identity?.IsAuthenticated == true && !Store.Loaded)
+            await Store.RefreshAsync();
+    }
+
+    private void Toggle() => _open = !_open;
+
+    private void OnStoreChanged() => InvokeAsync(StateHasChanged);
+
+    private async void OnAuthChanged(Task<AuthenticationState> task)
+    {
+        var state = await task;
+        if (state.User.Identity?.IsAuthenticated == true)
+            await Store.RefreshAsync();
+        else
+            Store.Clear();
+    }
+
+    public void Dispose()
+    {
+        Store.Changed -= OnStoreChanged;
+        Auth.AuthenticationStateChanged -= OnAuthChanged;
+    }
+
+    private async Task LogoutAsync()
+    {
+        await Tokens.ClearAsync();
+        Auth.NotifyUserChanged();
+        Navigation.NavigateTo("login");
+    }
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 1
+            ? parts[0][..1].ToUpperInvariant()
+            : (parts[0][..1] + parts[^1][..1]).ToUpperInvariant();
     }
 }
