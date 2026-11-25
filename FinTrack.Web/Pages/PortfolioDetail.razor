@@ -1,0 +1,489 @@
+@page "/portfolios/{Id:long}"
+@attribute [Authorize]
+@using System.Globalization
+@inject ApiClient Api
+@inject NavigationManager Navigation
+@inject OverlayService Overlay
+@inject PortfolioStore Store
+
+<PageTitle>@(_portfolio?.Name ?? "Portfolio") · FinTrack</PageTitle>
+
+<a class="back-link" href="portfolios"><i class="fa-solid fa-arrow-left"></i> Back to portfolios</a>
+
+@if (_loading)
+{
+    <div class="state-box">Loading portfolio…</div>
+}
+else if (_portfolio is null)
+{
+    <div class="alert-pmp-error" role="alert">@(_error ?? "Portfolio not found.")</div>
+}
+else
+{
+    <div class="welcome-banner">
+        <div class="wb-text">
+            <h1 class="wb-title">@_portfolio.Name</h1>
+            <div class="wb-sub">@_portfolio.ClientName</div>
+        </div>
+        <div class="wb-chips">
+            <span class="wb-chip"><i class="fa-solid fa-coins"></i> @_portfolio.BaseCurrency</span>
+            <span class="wb-chip"><i class="fa-solid fa-receipt"></i> @_transactions.Count trade@(_transactions.Count == 1 ? "" : "s")</span>
+            <button class="btn-ghost-light" @onclick="OpenEditPortfolio"><i class="fa-solid fa-pen"></i> Edit</button>
+            <button class="btn-ghost-light" @onclick="() => _showDeletePortfolio = true"><i class="fa-solid fa-trash"></i> Delete</button>
+        </div>
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="alert-pmp-error" role="alert">@_error</div>
+    }
+
+    <div class="stat-grid">
+        <div class="widget-stats bg-w-ink">
+            <i class="fa-solid fa-sack-dollar w-icon"></i>
+            <div class="w-label">Invested (@_portfolio.BaseCurrency)</div>
+            <div class="w-value">@Fmt(_invested)</div>
+        </div>
+        <div class="widget-stats bg-w-teal">
+            <i class="fa-solid fa-chart-line w-icon"></i>
+            <div class="w-label">Market value</div>
+            <div class="w-value">@Fmt(_value)</div>
+        </div>
+        <div class="widget-stats @(_pl >= 0 ? "bg-w-green" : "bg-w-red")">
+            <i class="fa-solid fa-scale-balanced w-icon"></i>
+            <div class="w-label">Net P/L</div>
+            <div class="w-value">@(_pl >= 0 ? "+" : "")@Fmt(_pl)</div>
+        </div>
+        <div class="widget-stats bg-w-purple">
+            <i class="fa-solid fa-layer-group w-icon"></i>
+            <div class="w-label">Holdings</div>
+            <div class="w-value">@_summary.Count</div>
+        </div>
+    </div>
+
+    <div class="section-row">
+        <div class="section-card">
+            <div class="sc-head"><span class="sc-title">Holdings</span></div>
+            @if (_summary.Count == 0)
+            {
+                <div class="state-box">No holdings yet. Add a trade to get started.</div>
+            }
+            else
+            {
+                <table class="pmp-table">
+                    <thead>
+                        <tr><th>Instrument</th><th class="num">Net qty</th><th class="num">Avg cost (@_portfolio.BaseCurrency)</th><th class="num">Invested (@_portfolio.BaseCurrency)</th><th class="num">Value (@_portfolio.BaseCurrency)</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var h in _summary)
+                        {
+                            <tr>
+                                <td><strong>@h.Instrument</strong></td>
+                                <td class="num">@h.NetQuantity.ToString("N4")</td>
+                                <td class="num">@h.AverageCost.ToString("N2")</td>
+                                <td class="num">@h.TotalInvested.ToString("N2")</td>
+                                <td class="num">@h.TotalValue.ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <div class="section-card">
+            <div class="sc-head"><span class="sc-title">Allocation by value</span></div>
+            @if (_segments.Count == 0)
+            {
+                <div class="state-box">No allocation to show yet.</div>
+            }
+            else
+            {
+                <div class="donut-wrap">
+                    <svg width="150" height="150" viewBox="0 0 140 140" role="img" aria-label="Holdings allocation">
+                        <g transform="rotate(-90 70 70)">
+                            <circle cx="70" cy="70" r="54" fill="none" stroke="#EEF1F4" stroke-width="18" />
+                            @foreach (var s in _segments)
+                            {
+                                <circle cx="70" cy="70" r="54" fill="none" stroke="@s.Color" stroke-width="18"
+                                        pathLength="100"
+                                        stroke-dasharray="@Inv(s.Pct) @Inv(100 - s.Pct)"
+                                        stroke-dashoffset="@Inv(-s.Offset)" />
+                            }
+                        </g>
+                        <text x="70" y="66" text-anchor="middle" class="donut-center-num">@_summary.Count</text>
+                        <text x="70" y="82" text-anchor="middle" class="donut-center">holdings</text>
+                    </svg>
+                    <div class="donut-legend">
+                        @foreach (var s in _segments)
+                        {
+                            <div class="lg">
+                                <span class="sw" style="background:@s.Color"></span>
+                                <span class="lg-name">@s.Name</span>
+                                <span class="lg-val">@s.Pct.ToString("N1")%</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="section-card">
+        <div class="sc-head">
+            <span class="sc-title">Transactions</span>
+            <button class="btn-primary-sm" @onclick="OpenAddTrade"><i class="fa-solid fa-plus"></i> Add trade</button>
+        </div>
+
+        <div class="toolbar">
+            <div class="pmp-tabs">
+                @foreach (var tab in _filterTabs)
+                {
+                    <button type="button" class="pmp-tab @(_typeFilter == tab.key ? "active" : "")" @onclick="() => _typeFilter = tab.key">
+                        @tab.label
+                        @if (tab.key == "ALL"){ <span class="tab-badge">@_transactions.Count</span> }
+                    </button>
+                }
+            </div>
+            <div class="search">
+                <input class="form-control" placeholder="Search instrument…" @bind="_search" @bind:event="oninput" />
+            </div>
+            <select class="form-select" style="max-width:190px;" @bind="_sort">
+                <option value="date_desc">Date (newest)</option>
+                <option value="date_asc">Date (oldest)</option>
+                <option value="amount_desc">Amount (high→low)</option>
+                <option value="instrument">Instrument (A→Z)</option>
+            </select>
+        </div>
+
+        @if (Filtered.Count == 0)
+        {
+            <div class="state-box">No transactions match your filters.</div>
+        }
+        else
+        {
+            <table class="pmp-table">
+                <thead>
+                    <tr><th>Date</th><th>Instrument</th><th>Type</th><th class="num">Quantity</th><th class="num">Unit price (@_portfolio.BaseCurrency)</th><th class="num">Total (@_portfolio.BaseCurrency)</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in Filtered)
+                    {
+                        <tr>
+                            <td>@t.TradeDate.ToString("dd MMM yyyy")</td>
+                            <td><strong>@t.Instrument</strong></td>
+                            <td><span class="tx-type @(t.Type == "BUY" ? "buy" : "sell")">@t.Type</span></td>
+                            <td class="num">@t.Quantity.ToString("N4")</td>
+                            <td class="num">@t.UnitPrice.ToString("N2")</td>
+                            <td class="num">@t.TotalAmount.ToString("N2")</td>
+                            <td style="text-align:right;">
+                                <button class="icon-del" title="Delete trade" @onclick="() => AskDeleteTrade(t)"><i class="fa-solid fa-trash"></i></button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+}
+
+@* ---------- Add trade modal ---------- *@
+@if (_showAddTrade)
+{
+    <div class="pmp-modal-backdrop" @onclick="CloseModals">
+        <div class="pmp-modal" @onclick:stopPropagation>
+            <div class="pmp-modal-head"><h3>Add trade</h3><button class="x" @onclick="CloseModals">&times;</button></div>
+            <EditForm Model="_tx" OnValidSubmit="SubmitTrade">
+                <DataAnnotationsValidator />
+                <div class="pmp-modal-body">
+                    @if (_modalError is not null)
+                    {
+                        <div class="alert-pmp-error">@_modalError</div>
+                    }
+                    <div class="field">
+                        <label for="tx-instrument">Instrument</label>
+                        <InputText id="tx-instrument" class="form-control" @bind-Value="_tx.Instrument" placeholder="e.g. SCOM" />
+                        <ValidationMessage For="() => _tx.Instrument" />
+                    </div>
+                    <div class="form-grid2">
+                        <div class="field">
+                            <label for="tx-type">Type</label>
+                            <InputSelect id="tx-type" class="form-select" @bind-Value="_tx.Type">
+                                <option value="BUY">BUY</option>
+                                <option value="SELL">SELL</option>
+                            </InputSelect>
+                        </div>
+                        <div class="field">
+                            <label for="tx-date">Trade date</label>
+                            <InputDate id="tx-date" class="form-control" @bind-Value="_tx.TradeDate" />
+                        </div>
+                        <div class="field">
+                            <label for="tx-qty">Quantity</label>
+                            <InputNumber id="tx-qty" class="form-control" @bind-Value="_tx.Quantity" step="any" />
+                            <ValidationMessage For="() => _tx.Quantity" />
+                        </div>
+                        <div class="field">
+                            <label for="tx-price">Unit price</label>
+                            <InputNumber id="tx-price" class="form-control" @bind-Value="_tx.UnitPrice" step="any" />
+                            <ValidationMessage For="() => _tx.UnitPrice" />
+                        </div>
+                    </div>
+                </div>
+                <div class="pmp-modal-foot">
+                    <button type="button" class="btn-sm-pmp" @onclick="CloseModals">Cancel</button>
+                    <button type="submit" class="btn-primary-sm" disabled="@_saving">
+                        @if (_saving){<span class="btn-spin"></span><span>Saving…</span>}else{<span>Add trade</span>}
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@* ---------- Edit portfolio modal ---------- *@
+@if (_showEditPortfolio)
+{
+    <div class="pmp-modal-backdrop" @onclick="CloseModals">
+        <div class="pmp-modal" @onclick:stopPropagation>
+            <div class="pmp-modal-head"><h3>Edit portfolio</h3><button class="x" @onclick="CloseModals">&times;</button></div>
+            <EditForm Model="_pf" OnValidSubmit="SubmitPortfolio">
+                <DataAnnotationsValidator />
+                <div class="pmp-modal-body">
+                    @if (_modalError is not null)
+                    {
+                        <div class="alert-pmp-error">@_modalError</div>
+                    }
+                    <div class="field">
+                        <label for="ep-name">Portfolio name</label>
+                        <InputText id="ep-name" class="form-control" @bind-Value="_pf.Name" />
+                        <ValidationMessage For="() => _pf.Name" />
+                    </div>
+                    <div class="field">
+                        <label for="ep-client">Client name</label>
+                        <InputText id="ep-client" class="form-control" @bind-Value="_pf.ClientName" />
+                        <ValidationMessage For="() => _pf.ClientName" />
+                    </div>
+                    <div class="field">
+                        <label for="ep-cur">Base currency</label>
+                        <InputSelect id="ep-cur" class="form-select" @bind-Value="_pf.BaseCurrency">
+                            <option value="KES">KES</option>
+                            <option value="USD">USD</option>
+                        </InputSelect>
+                    </div>
+                </div>
+                <div class="pmp-modal-foot">
+                    <button type="button" class="btn-sm-pmp" @onclick="CloseModals">Cancel</button>
+                    <button type="submit" class="btn-primary-sm" disabled="@_saving">
+                        @if (_saving){<span class="btn-spin"></span><span>Saving…</span>}else{<span>Save changes</span>}
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@* ---------- Delete trade confirm ---------- *@
+@if (_deleteTrade is not null)
+{
+    <div class="pmp-modal-backdrop" @onclick="CloseModals">
+        <div class="pmp-modal" @onclick:stopPropagation>
+            <div class="pmp-modal-head"><h3>Delete trade</h3><button class="x" @onclick="CloseModals">&times;</button></div>
+            <div class="pmp-modal-body">
+                Delete the <strong>@_deleteTrade.Type</strong> of @_deleteTrade.Quantity.ToString("N0") <strong>@_deleteTrade.Instrument</strong> on @_deleteTrade.TradeDate.ToString("dd MMM yyyy")? This cannot be undone.
+            </div>
+            <div class="pmp-modal-foot">
+                <button type="button" class="btn-sm-pmp" @onclick="CloseModals">Cancel</button>
+                <button type="button" class="btn-sm-danger" @onclick="ConfirmDeleteTrade" disabled="@_saving">
+                    @if (_saving){<span class="btn-spin"></span><span>Deleting…</span>}else{<span>Delete</span>}
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ---------- Delete portfolio confirm ---------- *@
+@if (_showDeletePortfolio)
+{
+    <div class="pmp-modal-backdrop" @onclick="CloseModals">
+        <div class="pmp-modal" @onclick:stopPropagation>
+            <div class="pmp-modal-head"><h3>Delete portfolio</h3><button class="x" @onclick="CloseModals">&times;</button></div>
+            <div class="pmp-modal-body">
+                Delete <strong>@_portfolio?.Name</strong> and all of its transactions? This cannot be undone.
+            </div>
+            <div class="pmp-modal-foot">
+                <button type="button" class="btn-sm-pmp" @onclick="CloseModals">Cancel</button>
+                <button type="button" class="btn-sm-danger" @onclick="ConfirmDeletePortfolio" disabled="@_saving">
+                    @if (_saving){<span class="btn-spin"></span><span>Deleting…</span>}else{<span>Delete portfolio</span>}
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Portfolio? _portfolio;
+    private List<Transaction> _transactions = new();
+    private List<HoldingSummary> _summary = new();
+    private bool _loading = true;
+    private string? _error;
+    private long _loadedId = -1;
+
+    private decimal _invested, _value, _pl;
+    private readonly List<Seg> _segments = new();
+
+    private string _typeFilter = "ALL";
+    private readonly (string key, string label)[] _filterTabs = new[] { ("ALL", "All"), ("BUY", "Buys"), ("SELL", "Sells") };
+    private string _search = "";
+    private string _sort = "date_desc";
+
+    private bool _showAddTrade, _showEditPortfolio, _showDeletePortfolio, _saving;
+    private string? _modalError;
+    private Transaction? _deleteTrade;
+    private TransactionRequest _tx = new();
+    private PortfolioRequest _pf = new();
+
+    private static readonly string[] Palette =
+    { "#00C896", "#0A2540", "#2563EB", "#D97706", "#7C3AED", "#0D9488", "#DC2626", "#059669" };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Id != _loadedId) { _loadedId = Id; await LoadAsync(); }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+
+        var pfRes = await Api.GetPortfolioAsync(Id);
+        if (!pfRes.Success || pfRes.Data is null)
+        {
+            _error = pfRes.Message ?? "Could not load portfolio.";
+            _portfolio = null;
+            _loading = false;
+            return;
+        }
+        _portfolio = pfRes.Data;
+
+        var txRes = await Api.GetTransactionsAsync(Id);
+        _transactions = txRes.Success && txRes.Data is not null ? txRes.Data : new();
+
+        var sumRes = await Api.GetSummaryAsync(Id);
+        _summary = sumRes.Success && sumRes.Data is not null ? sumRes.Data : new();
+
+        _invested = _summary.Sum(h => h.TotalInvested);
+        _value = _summary.Sum(h => h.TotalValue);
+        _pl = _value - _invested;
+
+        BuildSegments();
+        _loading = false;
+    }
+
+    private void BuildSegments()
+    {
+        _segments.Clear();
+        var rows = _summary.Where(h => h.TotalValue > 0).OrderByDescending(h => h.TotalValue).ToList();
+        var total = rows.Sum(h => h.TotalValue);
+        if (total <= 0) return;
+
+        double offset = 0;
+        int i = 0;
+        foreach (var h in rows)
+        {
+            double pct = (double)(h.TotalValue / total) * 100.0;
+            _segments.Add(new Seg(h.Instrument, pct, offset, Palette[i % Palette.Length]));
+            offset += pct;
+            i++;
+        }
+    }
+
+    private List<Transaction> Filtered
+    {
+        get
+        {
+            IEnumerable<Transaction> q = _transactions;
+            if (_typeFilter != "ALL") q = q.Where(t => t.Type == _typeFilter);
+            if (!string.IsNullOrWhiteSpace(_search))
+                q = q.Where(t => t.Instrument.Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase));
+            q = _sort switch
+            {
+                "date_asc" => q.OrderBy(t => t.TradeDate).ThenBy(t => t.Id),
+                "amount_desc" => q.OrderByDescending(t => t.TotalAmount),
+                "instrument" => q.OrderBy(t => t.Instrument).ThenByDescending(t => t.TradeDate),
+                _ => q.OrderByDescending(t => t.TradeDate).ThenByDescending(t => t.Id),
+            };
+            return q.ToList();
+        }
+    }
+
+    private string Fmt(decimal v) => $"{_portfolio?.BaseCurrency} {v:N2}";
+    private static string Inv(double v) => v.ToString("0.###", CultureInfo.InvariantCulture);
+
+    private void OpenAddTrade()
+    {
+        _tx = new TransactionRequest { Type = "BUY", TradeDate = DateTime.Today };
+        _modalError = null;
+        _showAddTrade = true;
+    }
+
+    private void OpenEditPortfolio()
+    {
+        if (_portfolio is null) return;
+        _pf = new PortfolioRequest { Name = _portfolio.Name, ClientName = _portfolio.ClientName, BaseCurrency = _portfolio.BaseCurrency };
+        _modalError = null;
+        _showEditPortfolio = true;
+    }
+
+    private void AskDeleteTrade(Transaction t) { _deleteTrade = t; _modalError = null; }
+
+    private void CloseModals()
+    {
+        _showAddTrade = _showEditPortfolio = _showDeletePortfolio = false;
+        _deleteTrade = null;
+        _modalError = null;
+    }
+
+    private async Task SubmitTrade()
+    {
+        _saving = true; _modalError = null;
+        Overlay.ShowSaving("Adding trade…");
+        var res = await Api.AddTransactionAsync(Id, _tx);
+        _saving = false;
+        if (res.Success) { CloseModals(); await LoadAsync(); await Overlay.ShowSuccess("Trade added"); }
+        else { _modalError = res.Message ?? "Could not add the trade."; await Overlay.ShowError(_modalError); }
+    }
+
+    private async Task SubmitPortfolio()
+    {
+        _saving = true; _modalError = null;
+        Overlay.ShowSaving("Saving changes…");
+        var res = await Api.UpdatePortfolioAsync(Id, _pf);
+        _saving = false;
+        if (res.Success) { CloseModals(); await LoadAsync(); await Store.RefreshAsync(); await Overlay.ShowSuccess("Portfolio updated"); }
+        else { _modalError = res.Message ?? "Could not update the portfolio."; await Overlay.ShowError(_modalError); }
+    }
+
+    private async Task ConfirmDeleteTrade()
+    {
+        if (_deleteTrade is null) return;
+        _saving = true;
+        Overlay.ShowSaving("Deleting trade…");
+        var res = await Api.DeleteTransactionAsync(_deleteTrade.Id);
+        _saving = false;
+        if (res.Success) { CloseModals(); await LoadAsync(); await Overlay.ShowSuccess("Trade deleted"); }
+        else { CloseModals(); await Overlay.ShowError(res.Message ?? "Could not delete the trade."); }
+    }
+
+    private async Task ConfirmDeletePortfolio()
+    {
+        _saving = true;
+        Overlay.ShowSaving("Deleting portfolio…");
+        var res = await Api.DeletePortfolioAsync(Id);
+        _saving = false;
+        if (res.Success) { CloseModals(); await Store.RefreshAsync(); await Overlay.ShowSuccess("Portfolio deleted"); Navigation.NavigateTo("portfolios"); }
+        else { CloseModals(); await Overlay.ShowError(res.Message ?? "Could not delete the portfolio."); }
+    }
+
+    private sealed record Seg(string Name, double Pct, double Offset, string Color);
+}

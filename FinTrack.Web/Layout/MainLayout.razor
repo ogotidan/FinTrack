@@ -1,16 +1,18 @@
-﻿@inherits LayoutComponentBase
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
+@inherits LayoutComponentBase
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+<div class="pmp-shell">
+    <NavMenu />
+    <div class="pmp-main">
+        <div class="pmp-topbar">
+            <div class="topbar-title">FinTrack</div>
+            <div class="topbar-right">
+                <span class="topbar-date">@DateTime.Now.ToString("ddd, dd MMM yyyy")</span>
+                <span class="topbar-badge">Analyst</span>
+            </div>
         </div>
-
-        <article class="content px-4">
+        <div class="pmp-content">
             @Body
-        </article>
-    </main>
+        </div>
+    </div>
+    <ActionOverlay />
 </div>

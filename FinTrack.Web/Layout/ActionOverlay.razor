@@ -1,0 +1,29 @@
+@implements IDisposable
+@inject OverlayService Overlay
+
+@if (Overlay.Visible)
+{
+    <div class="action-overlay" style="display:flex;">
+        <div class="action-overlay-box">
+            @if (Overlay.State == "success")
+            {
+                <div class="action-overlay-icon success"><i class="fa-solid fa-check"></i></div>
+            }
+            else if (Overlay.State == "error")
+            {
+                <div class="action-overlay-icon error"><i class="fa-solid fa-xmark"></i></div>
+            }
+            else
+            {
+                <div class="spinner-border" role="status"></div>
+            }
+            <div class="action-overlay-message">@Overlay.Message</div>
+        </div>
+    </div>
+}
+
+@code {
+    protected override void OnInitialized() => Overlay.OnChange += Update;
+    public void Dispose() => Overlay.OnChange -= Update;
+    private void Update() => InvokeAsync(StateHasChanged);
+}

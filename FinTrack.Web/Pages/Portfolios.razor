@@ -1,0 +1,159 @@
+@page "/portfolios"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject OverlayService Overlay
+@inject PortfolioStore Store
+
+<PageTitle>Portfolios · FinTrack</PageTitle>
+
+<div class="welcome-banner">
+    <div class="wb-text">
+        <h1 class="wb-title">Portfolios</h1>
+        <div class="wb-sub">Client portfolios you manage</div>
+    </div>
+    <div class="wb-chips">
+        <span class="wb-chip"><i class="fa-solid fa-layer-group"></i> @_portfolios.Count total</span>
+        <button class="btn-ghost-light" @onclick="OpenCreate"><i class="fa-solid fa-plus"></i> New portfolio</button>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="state-box">Loading portfolios…</div>
+}
+else if (_error is not null)
+{
+    <div class="alert-pmp-error" role="alert">@_error</div>
+}
+else if (_portfolios.Count == 0)
+{
+    <div class="state-box">
+        <h3>No portfolios yet</h3>
+        <p>Create your first portfolio to start tracking trades.</p>
+        <button class="btn-primary-sm" style="margin-top:10px;" @onclick="OpenCreate"><i class="fa-solid fa-plus"></i> New portfolio</button>
+    </div>
+}
+else
+{
+    <div class="portfolio-grid">
+        @for (var i = 0; i < _portfolios.Count; i++)
+        {
+            var p = _portfolios[i];
+            <a class="lot-card acc@(i % 5)" href="@($"portfolios/{p.Id}")">
+                <div class="lot-card-head">
+                    <div>
+                        <div class="lot-name">@p.Name</div>
+                        <div class="lot-location">@p.ClientName</div>
+                    </div>
+                    <span class="lot-badge @(p.BaseCurrency == "USD" ? "usd" : "open")">@p.BaseCurrency</span>
+                </div>
+                <div class="lot-stats">
+                    <div class="lot-stat">
+                        <div class="lot-stat-num">@p.TransactionCount</div>
+                        <div class="lot-stat-lbl">Trade@(p.TransactionCount == 1 ? "" : "s")</div>
+                    </div>
+                    <div class="lot-stat">
+                        <div class="lot-stat-num">@p.BaseCurrency</div>
+                        <div class="lot-stat-lbl">Currency</div>
+                    </div>
+                </div>
+                <div class="lot-actions">
+                    <span class="pmp-tab">View details&nbsp;<i class="fa-solid fa-arrow-right"></i></span>
+                </div>
+            </a>
+        }
+    </div>
+}
+
+@if (_showCreate)
+{
+    <div class="pmp-modal-backdrop" @onclick="CloseModal">
+        <div class="pmp-modal" @onclick:stopPropagation>
+            <div class="pmp-modal-head"><h3>New portfolio</h3><button class="x" @onclick="CloseModal">&times;</button></div>
+            <EditForm Model="_pf" OnValidSubmit="SubmitCreate">
+                <DataAnnotationsValidator />
+                <div class="pmp-modal-body">
+                    @if (_modalError is not null)
+                    {
+                        <div class="alert-pmp-error">@_modalError</div>
+                    }
+                    <div class="field">
+                        <label for="np-name">Portfolio name</label>
+                        <InputText id="np-name" class="form-control" @bind-Value="_pf.Name" placeholder="e.g. NSE Growth Portfolio" />
+                        <ValidationMessage For="() => _pf.Name" />
+                    </div>
+                    <div class="field">
+                        <label for="np-client">Client name</label>
+                        <InputText id="np-client" class="form-control" @bind-Value="_pf.ClientName" placeholder="e.g. Acme Capital Ltd" />
+                        <ValidationMessage For="() => _pf.ClientName" />
+                    </div>
+                    <div class="field">
+                        <label for="np-cur">Base currency</label>
+                        <InputSelect id="np-cur" class="form-select" @bind-Value="_pf.BaseCurrency">
+                            <option value="KES">KES</option>
+                            <option value="USD">USD</option>
+                        </InputSelect>
+                    </div>
+                </div>
+                <div class="pmp-modal-foot">
+                    <button type="button" class="btn-sm-pmp" @onclick="CloseModal">Cancel</button>
+                    <button type="submit" class="btn-primary-sm" disabled="@_saving">
+                        @if (_saving){<span class="btn-spin"></span><span>Creating…</span>}else{<span>Create portfolio</span>}
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Portfolio> _portfolios = new();
+    private bool _loading = true;
+    private string? _error;
+
+    private bool _showCreate, _saving;
+    private string? _modalError;
+    private PortfolioRequest _pf = new();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var result = await Api.GetPortfoliosAsync();
+        if (result.Success && result.Data is not null)
+            _portfolios = result.Data;
+        else
+            _error = result.Message ?? "Could not load portfolios.";
+        _loading = false;
+    }
+
+    private void OpenCreate()
+    {
+        _pf = new PortfolioRequest { BaseCurrency = "KES" };
+        _modalError = null;
+        _showCreate = true;
+    }
+
+    private void CloseModal() { _showCreate = false; _modalError = null; }
+
+    private async Task SubmitCreate()
+    {
+        _saving = true; _modalError = null;
+        Overlay.ShowSaving("Creating portfolio…");
+        var res = await Api.CreatePortfolioAsync(_pf);
+        _saving = false;
+        if (res.Success)
+        {
+            _showCreate = false;
+            await LoadAsync();
+            await Store.RefreshAsync();
+            await Overlay.ShowSuccess("Portfolio created");
+        }
+        else
+        {
+            _modalError = res.Message ?? "Could not create the portfolio.";
+            await Overlay.ShowError(_modalError);
+        }
+    }
+}
