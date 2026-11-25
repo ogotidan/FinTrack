@@ -1,0 +1,35 @@
+# FinTrack API (ASP.NET Core, .NET 10)
+# Build from the repo root:  docker build -f Dockerfile.backend -t fintrack-api .
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+COPY FinTrack.Api/FinTrack.Api.csproj FinTrack.Api/
+RUN dotnet restore FinTrack.Api/FinTrack.Api.csproj
+
+COPY FinTrack.Api/ FinTrack.Api/
+RUN dotnet publish FinTrack.Api/FinTrack.Api.csproj -c Release -o /app/publish --no-restore -p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+
+# curl is used by the health check below.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/*
+
+ENV ASPNETCORE_HTTP_PORTS=8080 \
+    ASPNETCORE_ENVIRONMENT=Production
+
+# Required at runtime (set as environment variables):
+#   ConnectionStrings__DefaultConnection="Server=<db-host>;Port=3306;Database=fintrack_db;User ID=...;Password=...;"
+#   Jwt__Key="<at least 32 random characters>"
+#   Cors__AllowedOrigins__0="https://<web-domain>"
+
+COPY --from=build /app/publish .
+
+EXPOSE 8080
+USER $APP_UID
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8080/swagger/v1/swagger.json -o /dev/null || exit 1
+ENTRYPOINT ["dotnet", "FinTrack.Api.dll"]

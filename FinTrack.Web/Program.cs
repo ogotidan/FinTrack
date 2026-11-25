@@ -8,7 +8,7 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
-var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5030";
+var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "https://fintrackapi.elitesgroup.co.ke";
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(apiBaseUrl) });
 
 builder.Services.AddScoped<TokenStore>();
