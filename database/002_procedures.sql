@@ -1,22 +1,5 @@
-/*
-    FinTrack — 002_procedures.sql
-
-    All data access goes through stored procedures (sp_* naming), matching
-    the parking_db style: p_ input params, OUT p_out_id for inserts,
-    LAST_INSERT_ID(), duplicate guards with IF EXISTS, COLLATE on string
-    matches, and SIGNAL SQLSTATE '45000' for business-rule violations.
-
-    Run AFTER 001_schema.sql. Safe to re-run (each proc is dropped first).
-*/
-
 USE `fintrack_db`;
 
-/* ================================================================== */
-/*  AUTH                                                               */
-/* ================================================================== */
-
-/* Register a new analyst. Returns the new id, or 0 if the email
-   is already taken (caller maps 0 -> HTTP 409 Conflict). */
 DROP PROCEDURE IF EXISTS `sp_register_analyst`;
 DELIMITER $$
 CREATE PROCEDURE `sp_register_analyst`(
@@ -37,8 +20,6 @@ BEGIN
 END $$
 DELIMITER ;
 
-/* Fetch the analyst row for login. Returns the password_hash so the API
-   can verify the supplied password with BCrypt (never done in SQL). */
 DROP PROCEDURE IF EXISTS `sp_validate_login`;
 DELIMITER $$
 CREATE PROCEDURE `sp_validate_login`(IN p_email VARCHAR(150))
@@ -50,7 +31,6 @@ BEGIN
 END $$
 DELIMITER ;
 
-/* Stamp last_login_at after a successful login. */
 DROP PROCEDURE IF EXISTS `sp_update_analyst_last_login`;
 DELIMITER $$
 CREATE PROCEDURE `sp_update_analyst_last_login`(IN p_analyst_id BIGINT UNSIGNED)
@@ -59,11 +39,6 @@ BEGIN
 END $$
 DELIMITER ;
 
-/* ================================================================== */
-/*  PORTFOLIOS  (all scoped by analyst_id for ownership)              */
-/* ================================================================== */
-
-/* Create a portfolio for an analyst. Returns the new id. */
 DROP PROCEDURE IF EXISTS `sp_add_portfolio`;
 DELIMITER $$
 CREATE PROCEDURE `sp_add_portfolio`(
@@ -80,7 +55,6 @@ BEGIN
 END $$
 DELIMITER ;
 
-/* List an analyst's portfolios, with a quick transaction count for the UI. */
 DROP PROCEDURE IF EXISTS `sp_get_portfolios`;
 DELIMITER $$
 CREATE PROCEDURE `sp_get_portfolios`(IN p_analyst_id BIGINT UNSIGNED)
@@ -96,7 +70,6 @@ BEGIN
 END $$
 DELIMITER ;
 
-/* Fetch a single portfolio, but only if it belongs to the analyst. */
 DROP PROCEDURE IF EXISTS `sp_get_portfolio_by_id`;
 DELIMITER $$
 CREATE PROCEDURE `sp_get_portfolio_by_id`(
@@ -113,7 +86,6 @@ BEGIN
 END $$
 DELIMITER ;
 
-/* Update a portfolio. p_out_id = rows affected (0 => not found/not owned). */
 DROP PROCEDURE IF EXISTS `sp_update_portfolio`;
 DELIMITER $$
 CREATE PROCEDURE `sp_update_portfolio`(
@@ -135,7 +107,6 @@ BEGIN
 END $$
 DELIMITER ;
 
-/* Delete a portfolio (transactions cascade). p_out_id = rows affected. */
 DROP PROCEDURE IF EXISTS `sp_delete_portfolio`;
 DELIMITER $$
 CREATE PROCEDURE `sp_delete_portfolio`(
@@ -150,13 +121,6 @@ BEGIN
 END $$
 DELIMITER ;
 
-/* ================================================================== */
-/*  TRANSACTIONS                                                       */
-/* ================================================================== */
-
-/* Add a buy/sell trade. Enforces the core invariant at the DB level:
-   you cannot SELL more units of an instrument than the portfolio holds.
-   A violation raises SIGNAL 45000, which the API maps to HTTP 400. */
 DROP PROCEDURE IF EXISTS `sp_add_transaction`;
 DELIMITER $$
 CREATE PROCEDURE `sp_add_transaction`(
@@ -205,8 +169,6 @@ BEGIN
 END $$
 DELIMITER ;
 
-/* List all transactions for a portfolio (newest trade first).
-   Sorting/filtering is also offered client-side in the SPA. */
 DROP PROCEDURE IF EXISTS `sp_get_transactions`;
 DELIMITER $$
 CREATE PROCEDURE `sp_get_transactions`(IN p_portfolio_id BIGINT UNSIGNED)
@@ -222,8 +184,6 @@ BEGIN
 END $$
 DELIMITER ;
 
-/* Delete a transaction, but only if it belongs to one of the analyst's
-   own portfolios. p_out_id = rows affected (0 => not found/not owned). */
 DROP PROCEDURE IF EXISTS `sp_delete_transaction`;
 DELIMITER $$
 CREATE PROCEDURE `sp_delete_transaction`(
@@ -239,21 +199,6 @@ BEGIN
 END $$
 DELIMITER ;
 
-/* ================================================================== */
-/*  HOLDINGS SUMMARY  (the showcase proc)                             */
-/* ================================================================== */
-/*
-    Per instrument, for one portfolio:
-      net_quantity   = total BUY qty - total SELL qty
-      average_cost   = total BUY cost / total BUY qty  (avg purchase price)
-      total_invested = net_quantity * average_cost     (cost basis held)
-      latest_price   = unit_price of the most recent trade for the instrument
-      total_value    = net_quantity * latest_price      (mark-to-last-trade)
-
-    There is no external market-price feed in scope, so "total value" is
-    marked to the latest traded price — documented as an assumption.
-    Only instruments with a positive net holding are returned.
-*/
 DROP PROCEDURE IF EXISTS `sp_get_portfolio_summary`;
 DELIMITER $$
 CREATE PROCEDURE `sp_get_portfolio_summary`(IN p_portfolio_id BIGINT UNSIGNED)
